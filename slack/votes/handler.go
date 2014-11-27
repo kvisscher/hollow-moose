@@ -2,6 +2,7 @@ package votes
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/kvisscher/hollow-moose/slack"
 	"log"
@@ -44,6 +45,7 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 
 	if token != handler.Token {
 		log.Println("Received invalid token. Ignoring this request")
+		writer.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -57,30 +59,44 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 	trigger := request.FormValue("trigger_word")
 	text := request.FormValue("text")
 
+	response, err := handler.handleTrigger(trigger, text, request)
+
+	if err != nil {
+		log.Println("Error while handling trigger", trigger, err)
+		return
+	}
+
+	bytes, err := json.Marshal(response)
+
+	if err != nil {
+		log.Println("Error encoding response")
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.Write(bytes)
+}
+
+func (handler *VotesSlackHandler) handleTrigger(trigger string, text string, request *http.Request) (slack.Response, error) {
+	var response slack.Response
+	var err error
+
 	if strings.Index(trigger, CommandPlusOne) == 0 {
 		log.Println("Plus one triggered for", handler.CurrentVoteTarget)
-		if score, ok := handler.Votes[handler.CurrentVoteTarget]; ok {
-			score.Votes += 1
 
-			log.Println("Added +1 to score for", handler.CurrentVoteTarget, "new score is", score.Votes)
-
-			respondToSlack(fmt.Sprintf("Added +1 to score for %s new score is %d", handler.CurrentVoteTarget, score.Votes), writer)
-		}
+		// Add 1 to the total score
+		response = handler.handleUpdateScore(1)
 	} else if strings.Index(trigger, CommandMinusOne) == 0 {
-		// Subtract one from the score
-		if score, ok := handler.Votes[handler.CurrentVoteTarget]; ok {
-			score.Votes -= 1
+		log.Println("Minus one triggered for", handler.CurrentVoteTarget)
 
-			log.Println("Removed -1 from score for", handler.CurrentVoteTarget, "new score is", score.Votes)
-
-			respondToSlack(fmt.Sprintf("Removed -1 from score for %s new score is %d", handler.CurrentVoteTarget, score.Votes), writer)
-		}
+		// Remove 1 from the total score
+		response = handler.handleUpdateScore(-1)
 	} else if strings.Index(trigger, CommandVote) == 0 {
-		// Retrieve the url from the text
+		// Retrieve the target that is going to be voted for from the text
 		handler.CurrentVoteTarget = strings.TrimSpace(strings.Replace(text, trigger, "", 1))
 
 		if _, ok := handler.Votes[handler.CurrentVoteTarget]; !ok {
-			// Create new entry
+			// Create new vote entry
 			handler.Votes[handler.CurrentVoteTarget] = &UserScore{User: request.FormValue("user_name"), Votes: 0}
 
 			log.Println("Added new entry for", handler.CurrentVoteTarget)
@@ -88,18 +104,24 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 	} else if strings.Index(trigger, CommandStats) == 0 {
 		// TODO Post a message to show the stats of a user
 	} else {
-		log.Println("Unknown command", trigger)
+		err = errors.New(fmt.Sprintf("Unknown command %s", trigger))
 	}
+
+	return response, err
 }
 
-func respondToSlack(text string, writer http.ResponseWriter) {
-  bytes, err := json.Marshal(slack.Response{Text: text})
+func (handler *VotesSlackHandler) handleUpdateScore(change int) slack.Response {
+	var response slack.Response
 
-  if err != nil {
-    log.Println("Error encoding response")
-    return
-  }
+	if score, ok := handler.Votes[handler.CurrentVoteTarget]; ok {
+		score.Votes += change
 
-  writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-  writer.Write(bytes)
+		response = createResponse(fmt.Sprintf("Added +1 to score for %s new score is %d", handler.CurrentVoteTarget, score.Votes))
+	}
+
+	return response
+}
+
+func createResponse(text string) slack.Response {
+	return slack.Response{Text: text}
 }
