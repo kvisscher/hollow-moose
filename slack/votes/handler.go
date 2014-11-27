@@ -36,6 +36,7 @@ func New(token string, channel string) *VotesSlackHandler {
 	}
 }
 
+// Handler for the external webhook of Slack
 func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	defer request.Body.Close()
 
@@ -53,7 +54,6 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 		return
 	}
 
-	//channel := request.FormValue("channel_name")
 	trigger := request.FormValue("trigger_word")
 	text := request.FormValue("text")
 
@@ -64,8 +64,7 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 
 			log.Println("Added +1 to score for", handler.CurrentVoteTarget, "new score is", score.Votes)
 
-			encoder := json.NewEncoder(writer)
-			encoder.Encode(slack.Response{Text: fmt.Sprintf("Added +1 to score for %s new score is %d", handler.CurrentVoteTarget, score.Votes)})
+			respondToSlack(fmt.Sprintf("Added +1 to score for %s new score is %d", handler.CurrentVoteTarget, score.Votes), writer)
 		}
 	} else if strings.Index(trigger, CommandMinusOne) == 0 {
 		// Subtract one from the score
@@ -74,8 +73,7 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 
 			log.Println("Removed -1 from score for", handler.CurrentVoteTarget, "new score is", score.Votes)
 
-			encoder := json.NewEncoder(writer)
-			encoder.Encode(slack.Response{Text: fmt.Sprintf("Removed -1 from score for %s new score is %d", handler.CurrentVoteTarget, score.Votes)})
+			respondToSlack(fmt.Sprintf("Removed -1 from score for %s new score is %d", handler.CurrentVoteTarget, score.Votes), writer)
 		}
 	} else if strings.Index(trigger, CommandVote) == 0 {
 		// Retrieve the url from the text
@@ -92,4 +90,16 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 	} else {
 		log.Println("Unknown command", trigger)
 	}
+}
+
+func respondToSlack(text string, writer http.ResponseWriter) {
+  bytes, err := json.Marshal(slack.Response{Text: text})
+
+  if err != nil {
+    log.Println("Error encoding response")
+    return
+  }
+
+  writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+  writer.Write(bytes)
 }
