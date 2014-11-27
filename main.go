@@ -5,6 +5,8 @@ import (
     "log"
     "net/http"
     "strings"
+    "encoding/json"
+    "fmt"
   )
 
 const (
@@ -37,6 +39,10 @@ func main() {
   server := &http.Server{Addr: ":8080"}
 
   log.Fatal(server.ListenAndServe())
+}
+
+type SlackResponse struct {
+  Text string `json:"text"`
 }
 
 type SlackHandler struct {
@@ -78,6 +84,9 @@ func (handler *SlackHandler) ServeHTTP(writer http.ResponseWriter, request *http
       score.Votes += 1
 
       log.Println("Added +1 to score for", handler.CurrentVoteTarget, "new score is", score.Votes)
+
+      encoder := json.NewEncoder(writer)
+      encoder.Encode(SlackResponse{Text: fmt.Sprintf("Added +1 to score for %s new score is %d", handler.CurrentVoteTarget, score.Votes)})
     }
   } else if strings.Index(trigger, CommandMinusOne) == 0 {
       // Subtract one from the score
@@ -85,6 +94,9 @@ func (handler *SlackHandler) ServeHTTP(writer http.ResponseWriter, request *http
         score.Votes -= 1
 
         log.Println("Removed -1 from score for", handler.CurrentVoteTarget, "new score is", score.Votes)
+
+        encoder := json.NewEncoder(writer)
+        encoder.Encode(SlackResponse{Text: fmt.Sprintf("Removed -1 from score for %s new score is %d", handler.CurrentVoteTarget, score.Votes)})
       }
   } else if strings.Index(trigger, CommandVote) == 0 {
     // Retrieve the url from the text
