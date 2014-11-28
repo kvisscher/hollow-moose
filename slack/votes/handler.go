@@ -51,7 +51,7 @@ func (handler *VotesSlackHandler) ServeHTTP(writer http.ResponseWriter, request 
 
 	channel := request.FormValue("channel_name")
 
-	if channel != handler.Channel {
+	if channel != "" && channel != handler.Channel {
 		log.Println("Skipping message from channel", channel, "because it does not match the target", handler.Channel)
 		return
 	}
